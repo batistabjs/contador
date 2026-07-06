@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cronômetro</title>
+<style>
+  :root {
+    --bg: #000000;
+    --fg: #ff2b2b;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Courier New', Consolas, monospace;
+    transition: background 0.08s linear, color 0.08s linear;
+  }
+
+  .clock {
+    font-size: clamp(120px, 32vw, 420px);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 60px currentColor;
+    transition: color 0.08s linear;
+  }
+
+  .controls {
+    margin-top: 3rem;
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    width: 100%;
+  }
+
+  button {
+    background: transparent;
+    border: 2px solid var(--fg-now, var(--fg));
+    color: var(--fg-now, var(--fg));
+    font-family: inherit;
+    font-size: clamp(14px, 1.6vw, 18px);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 0.9em 2.2em;
+    cursor: pointer;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color 0.08s linear, color 0.08s linear, background 0.2s ease, opacity 0.2s ease;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--fg-now, var(--fg));
+    color: var(--bg-now, var(--bg));
+  }
+
+  button:active,
+  button:focus,
+  button:focus-visible {
+    background: transparent;
+    color: var(--fg-now, var(--fg));
+    border-color: var(--fg-now, var(--fg));
+    outline: none;
+  }
+
+  button:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+</style>
+</head>
+<body>
+
+  <div class="clock" id="clock">10:00</div>
+
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <button id="skipBtn">Avançar Etapa</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+<script>
+  const COUNTDOWN_START = 10 * 60;   // 10 minutos em segundos
+  const DANGER_THRESHOLD = 2 * 60;   // 2 minutos
+  const PAUSE_AFTER_ZERO = 30;       // 30 segundos de espera
+  const COUNTUP_LIMIT = 5 * 60;      // 5 minutos crescente
+
+  const RED = '#ff2b2b';
+  const BLACK = '#000000';
+  const WHITE = '#ffffff';
+
+  const clockEl = document.getElementById('clock');
+  const startBtn = document.getElementById('startBtn');
+  const skipBtn = document.getElementById('skipBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  let phase = 'idle'; // idle -> countdown -> pause -> countup -> done
+  let secondsLeft = COUNTDOWN_START;
+  let pauseRemaining = PAUSE_AFTER_ZERO;
+  let secondsUp = 0;
+  let intervalId = null;
+  let flashOn = false; // controla a alternância preto/vermelho nos últimos 2 minutos
+
+  function formatTime(totalSeconds) {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function applyColors() {
+    let bg, fg;
+    if (phase === 'countup' || phase === 'done') {
+      // fundo branco, algarismos pretos
+      bg = WHITE;
+      fg = BLACK;
+      document.body.classList.add('inverted');
+    } else if (phase === 'countdown' && secondsLeft > 0 && secondsLeft <= DANGER_THRESHOLD) {
+      // últimos 2 minutos: alterna fundo preto/vermelho a cada segundo
+      document.body.classList.remove('inverted');
+      if (flashOn) {
+        bg = BLACK;
+        fg = RED;
+      } else {
+        bg = RED;
+        fg = BLACK;
+      }
+    } else {
+      // estado padrão: fundo preto, algarismos vermelhos
+      document.body.classList.remove('inverted');
+      bg = BLACK;
+      fg = RED;
+    }
+    document.body.style.background = bg;
+    document.body.style.color = fg;
+    document.body.style.setProperty('--bg-now', bg);
+    document.body.style.setProperty('--fg-now', fg);
+  }
+
+  function render() {
+    applyColors();
+    updateButtons();
+    if (phase === 'idle') {
+      clockEl.textContent = formatTime(COUNTDOWN_START);
+    } else if (phase === 'countdown') {
+      clockEl.textContent = formatTime(secondsLeft);
+    } else if (phase === 'pause') {
+      clockEl.textContent = '00:00';
+    } else if (phase === 'countup') {
+      clockEl.textContent = formatTime(secondsUp);
+    } else if (phase === 'done') {
+      clockEl.textContent = formatTime(COUNTUP_LIMIT);
+    }
+  }
+
+  function tick() {
+    if (phase === 'countdown') {
+      secondsLeft--;
+      if (secondsLeft <= 0) {
+        secondsLeft = 0;
+        phase = 'pause';
+        pauseRemaining = PAUSE_AFTER_ZERO;
+        flashOn = false;
+      } else if (secondsLeft <= DANGER_THRESHOLD) {
+        flashOn = !flashOn;
+      }
+    } else if (phase === 'pause') {
+      pauseRemaining--;
+      if (pauseRemaining <= 0) {
+        phase = 'countup';
+        secondsUp = 0;
+      }
+    } else if (phase === 'countup') {
+      secondsUp++;
+      if (secondsUp >= COUNTUP_LIMIT) {
+        phase = 'done';
+        stopInterval();
+      }
+    }
+    render();
+  }
+
+  function startInterval() {
+    if (intervalId) return;
+    intervalId = setInterval(tick, 1000);
+  }
+
+  function stopInterval() {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  function goIdle() {
+    phase = 'idle';
+    secondsLeft = COUNTDOWN_START;
+    pauseRemaining = PAUSE_AFTER_ZERO;
+    secondsUp = 0;
+    flashOn = false;
+  }
+
+  function updateButtons() {
+    startBtn.disabled = (phase !== 'idle');
+    skipBtn.disabled = (phase === 'done');
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (phase !== 'idle') return;
+    phase = 'countdown';
+    secondsLeft = COUNTDOWN_START;
+    flashOn = false;
+    render();
+    startInterval();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    stopInterval();
+    goIdle();
+    render();
+  });
+
+  skipBtn.addEventListener('click', () => {
+    if (phase === 'idle') {
+      // avança do início direto para a contagem regressiva
+      phase = 'countdown';
+      secondsLeft = COUNTDOWN_START;
+      flashOn = false;
+      startInterval();
+    } else if (phase === 'countdown') {
+      // pula direto para o início da contagem crescente (ignora a pausa de 30s)
+      secondsLeft = 0;
+      flashOn = false;
+      phase = 'countup';
+      secondsUp = 0;
+    } else if (phase === 'pause') {
+      // pula direto para o início da contagem crescente
+      pauseRemaining = 0;
+      phase = 'countup';
+      secondsUp = 0;
+    } else if (phase === 'countup') {
+      // pula direto para o final (concluído)
+      secondsUp = COUNTUP_LIMIT;
+      phase = 'done';
+      stopInterval();
+    }
+    render();
+  });
+
+  render();
+</script>
+
+</body>
+</html>

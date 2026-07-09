@@ -84,6 +84,91 @@
     opacity: 0.3;
     cursor: default;
   }
+
+  /* Config button */
+  .config-btn {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    font-size: clamp(12px, 1.4vw, 16px);
+    padding: 0.5em 1em;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.open {
+    display: flex;
+  }
+
+  .modal {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 2rem;
+    width: min(90vw, 400px);
+    color: #fff;
+    font-family: inherit;
+  }
+
+  .modal h2 {
+    margin: 0 0 1.5rem;
+    font-size: 1.2rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .modal label {
+    display: block;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.1em;
+  }
+
+  .modal label span {
+    display: block;
+    margin-bottom: 0.3rem;
+    opacity: 0.7;
+    font-size: 0.75rem;
+  }
+
+  .modal input {
+    width: 100%;
+    background: #111;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 1rem;
+    padding: 0.5em 0.7em;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .modal input:focus {
+    border-color: var(--fg);
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    justify-content: flex-end;
+  }
+
+  .modal-actions button {
+    font-size: 0.8rem;
+    padding: 0.6em 1.4em;
+  }
 </style>
 </head>
 <body>
@@ -96,11 +181,63 @@
     <button id="resetBtn">Reset</button>
   </div>
 
+  <button class="config-btn" id="configBtn">⚙ Config</button>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2>Configurações</h2>
+      <label>
+        <span>Cronômetro Regressivo (minutos)</span>
+        <input type="number" id="cfgCountdown" min="0.1" step="0.1">
+      </label>
+      <label>
+        <span>Limite de Perigo (minutos)</span>
+        <input type="number" id="cfgDanger" min="0.1" step="0.1">
+      </label>
+      <label>
+        <span>Pausa após zero (minutos)</span>
+        <input type="number" id="cfgPause" min="0" step="0.1">
+      </label>
+      <label>
+        <span>Cronômetro Progressivo (minutos)</span>
+        <input type="number" id="cfgCountup" min="0.1" step="0.1">
+      </label>
+      <div class="modal-actions">
+        <button id="cfgCancel">Cancelar</button>
+        <button id="cfgSave">Salvar</button>
+      </div>
+    </div>
+  </div>
+
 <script>
-  const COUNTDOWN_START = 10 * 60;   // 10 minutos em segundos
-  const DANGER_THRESHOLD = 2 * 60;   // 2 minutos
-  const PAUSE_AFTER_ZERO = 30;       // 30 segundos de espera
-  const COUNTUP_LIMIT = 5 * 60;      // 5 minutos crescente
+  const STORAGE_KEY = 'contador_config';
+
+  function loadConfig() {
+    const defaults = {
+      countdown: 10 * 60,
+      danger: 2 * 60,
+      pause: 30,
+      countup: 5 * 60,
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved) {
+        return {
+          countdown: Number(saved.countdown) || defaults.countdown,
+          danger: Number(saved.danger) || defaults.danger,
+          pause: Number(saved.pause) ?? defaults.pause,
+          countup: Number(saved.countup) || defaults.countup,
+        };
+      }
+    } catch {}
+    return defaults;
+  }
+
+  let cfg = loadConfig();
+  let COUNTDOWN_START = cfg.countdown;
+  let DANGER_THRESHOLD = cfg.danger;
+  let PAUSE_AFTER_ZERO = cfg.pause;
+  let COUNTUP_LIMIT = cfg.countup;
 
   const RED = '#ff2b2b';
   const BLACK = '#000000';
@@ -259,6 +396,55 @@
       stopInterval();
     }
     render();
+  });
+
+  // Modal config
+  const configBtn = document.getElementById('configBtn');
+  const modalOverlay = document.getElementById('modalOverlay');
+  const cfgCountdown = document.getElementById('cfgCountdown');
+  const cfgDanger = document.getElementById('cfgDanger');
+  const cfgPause = document.getElementById('cfgPause');
+  const cfgCountup = document.getElementById('cfgCountup');
+  const cfgSave = document.getElementById('cfgSave');
+  const cfgCancel = document.getElementById('cfgCancel');
+
+  function openModal() {
+    cfgCountdown.value = COUNTDOWN_START / 60;
+    cfgDanger.value = DANGER_THRESHOLD / 60;
+    cfgPause.value = PAUSE_AFTER_ZERO / 60;
+    cfgCountup.value = COUNTUP_LIMIT / 60;
+    modalOverlay.classList.add('open');
+  }
+
+  function closeModal() {
+    modalOverlay.classList.remove('open');
+  }
+
+  configBtn.addEventListener('click', openModal);
+  cfgCancel.addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
+
+  cfgSave.addEventListener('click', () => {
+    COUNTDOWN_START = Math.max(1, Math.round((Number(cfgCountdown.value) || 10) * 60));
+    DANGER_THRESHOLD = Math.max(1, Math.round((Number(cfgDanger.value) || 2) * 60));
+    PAUSE_AFTER_ZERO = Math.max(0, Math.round((Number(cfgPause.value) || 0) * 60));
+    COUNTUP_LIMIT = Math.max(1, Math.round((Number(cfgCountup.value) || 5) * 60));
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      countdown: COUNTDOWN_START,
+      danger: DANGER_THRESHOLD,
+      pause: PAUSE_AFTER_ZERO,
+      countup: COUNTUP_LIMIT,
+    }));
+
+    if (phase === 'idle') {
+      secondsLeft = COUNTDOWN_START;
+      pauseRemaining = PAUSE_AFTER_ZERO;
+    }
+    render();
+    closeModal();
   });
 
   render();
